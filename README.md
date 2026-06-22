@@ -11,3 +11,7 @@ $ fn do_something() {
 ```
 * All programs are functions (with variadic unlimited aruments signature: `fn program(...)`)
 * all functions are programs.
+
+## Ideas
+* Noe support med nix, direnv?, auto nix-develop hvis flake.nix? ...
+* support for en root.ø fil, eller ".ø" som auto importeres når man kommer inni en mappe med den, og so då du går ut av den mappen so skrus det av?
