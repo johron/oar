@@ -1,4 +1,4 @@
-# Ø
+# Ø (oslash)
 - Modern shell and scripting language
 
 ## Syntax idea
