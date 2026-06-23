@@ -22,6 +22,7 @@ const char* get_token_type_string(TokenType type) {
         case TOK_PIPE: return "TOK_PIPE";
         case TOK_DOLLAR: return "TOK_DOLLAR";
         case TOK_ARROW: return "TOK_ARROW";
+        case TOK_DB_COLON: return "TOK_DB_COLON";
         case TOK_DB_MORE: return "TOK_DB_MORE";
         case TOK_DB_EQUAL: return "TOK_DB_EQUAL";
         case TOK_BANG_EQUAL: return "TOK_BANG_EQUAL";
@@ -160,7 +161,7 @@ Token lexer_next_token(Lexer *l) {
         case '=': {
             if (lexer_peek(l) == '=') {
                 lexer_advance(l);
-                return (Token) {.type = TOK_DB_EQUAL };
+                return (Token) { .type = TOK_DB_EQUAL };
             } else {
                 return (Token) { .type = TOK_EQUAL };
             }
@@ -168,7 +169,7 @@ Token lexer_next_token(Lexer *l) {
         case '<': {
             if (lexer_peek(l) == '=') {
                 lexer_advance(l);
-                return (Token) {.type = TOK_LESS_EQUAL };
+                return (Token) { .type = TOK_LESS_EQUAL };
             } else {
                 return (Token) { .type = TOK_LESS };
             }
@@ -187,11 +188,19 @@ Token lexer_next_token(Lexer *l) {
         case '!': {
             if (lexer_peek(l) == '=') {
                 lexer_advance(l);
-                return (Token) {.type = TOK_BANG_EQUAL };
+                return (Token) { .type = TOK_BANG_EQUAL };
             } else {
                 return (Token) { .type = TOK_BANG };
             }
         };
+        case ':': {
+            if (lexer_peek(l) == ':') {
+                lexer_advance(l);
+                return (Token) { .type = TOK_DB_COLON };
+            } else {
+                // continue, right?
+            }
+        }
         
         case ',': return (Token) { .type = TOK_COMMA };
         case '|': return (Token) { .type = TOK_PIPE };

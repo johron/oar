@@ -70,7 +70,10 @@ void parser_free_ast(ASTNode *node) {
     if (node->type == NODE_BINARY_OP) {
         parser_free_ast(node->data.binary_op.left);
         parser_free_ast(node->data.binary_op.right);
+    } else if (node->type == NODE_UNARY_OP) {
+        parser_free_ast(node->data.unary_op.operand);
     }
+
     free(node);
 }
 
@@ -99,6 +102,21 @@ ASTNode* parser_create_binary_op_node(char op, ASTNode *left, ASTNode *right) {
 
     return node;
 }
+
+ASTNode* parser_create_unary_op_node(char op, ASTNode *operand) {
+    ASTNode *node = (ASTNode*)malloc(sizeof(ASTNode));
+    if (!node) {
+        fprintf(stderr, "Parser Error: Allocation failed for unary node.\n");
+        exit(1);
+    }
+    
+    node->type = NODE_UNARY_OP;
+    node->data.unary_op.op = op;
+    node->data.unary_op.operand = operand;
+    
+    return node;
+}
+
 
 ASTNode* parse_stmt(Parser *p);
 
@@ -143,12 +161,13 @@ ASTNode* parse_func_call_stmt(Parser *p) {
     Block args;
     parser_init_block(&args);
 
-    if (parser_peek(p).type == TOK_LPAREN) { // parse as func(arg1, arg2, ...)
+    if (parser_peek(p).type == TOK_DB_COLON) { // parse as func::(arg1, arg2, ...)
         parser_advance(p);
+        parser_expect(p, TOK_LPAREN, "Expected opening parenthesis to open function call");
+
         while (parser_peek(p).type != TOK_RPAREN) {
             ASTNode *expr = parse_expr(p);
 
-            printf("%s\n", get_token_type_string(parser_peek(p).type));
             if (parser_peek(p).type != TOK_RPAREN) {
                 parser_expect(p, TOK_COMMA, "Expected comma to continue argument list");
             }
@@ -158,10 +177,24 @@ ASTNode* parse_func_call_stmt(Parser *p) {
 
         parser_expect(p, TOK_RPAREN, "Expected closing parenthesis to close function call");
     } else { // parse as func arg1 arg2 ...;
-        
+        while (parser_peek(p).type != TOK_EOF && parser_peek(p).type != TOK_SEMICOLON) {
+            if (parser_peek(p).type == TOK_LPAREN) { // parse as normal full expression
+                parser_advance(p);
 
-        printf("parse_func_call_stmt() is unimplemented for function call type 2\n");
-        exit(1);
+                ASTNode *expr = parse_expr(p);
+
+                parser_expect(p, TOK_RPAREN, "Expected closing parenthesis to close expression closure");
+
+                parser_block_push_node(&args, expr);
+            } else { // only parse simple expression, unary
+                ASTNode *expr = parse_unary_expr(p);
+                parser_block_push_node(&args, expr);
+            }
+        }
+    }
+
+    if (parser_peek(p).type != TOK_EOF) {
+        parser_expect(p, TOK_SEMICOLON, "Expected semicolon to complete function call expression");
     }
 
     FuncCall func_call = {
@@ -218,14 +251,37 @@ ASTNode* parse_primary_expr(Parser *p) {
         };
 
         default: {
-            fprintf(stderr, "Parser Error: Unexpected token.\n");
+            fprintf(stderr, "Parser Error: Unexpected token in primary expression %s\n", get_token_type_string(token.type));
             exit(1);
         }
     }
 }
 
+ASTNode* parse_unary_expr(Parser *p) {
+    Token token = parser_peek(p);
+
+    if (token.type == TOK_MINUS || token.type == TOK_PLUS || token.type == TOK_BANG) {
+        parser_advance(p);
+        
+        char op;
+        if (token.type == TOK_MINUS) op = '-';
+        else if (token.type == TOK_PLUS) op = '+';
+        else if (token.type == TOK_BANG) op = '!';
+        else {
+            fprintf(stderr, "Invalid operator for unary expression");
+            exit(1);
+        }
+
+        ASTNode *operand = parse_unary_expr(p);
+        
+        return parser_create_unary_op_node(op, operand);
+    }
+
+    return parse_primary_expr(p);
+}
+
 ASTNode* parse_term_expr(Parser *p) {
-    ASTNode *expr = parse_primary_expr(p);
+    ASTNode *expr = parse_unary_expr(p); 
 
     while (parser_peek(p).type == TOK_STAR || parser_peek(p).type == TOK_SLASH) {
         Token op_token = parser_peek(p);
@@ -233,12 +289,13 @@ ASTNode* parse_term_expr(Parser *p) {
         
         char op = (op_token.type == TOK_STAR) ? '*' : '/';
         
-        ASTNode *right = parse_primary_expr(p);
+        ASTNode *right = parse_unary_expr(p); 
         expr = parser_create_binary_op_node(op, expr, right);
     }
 
     return expr;
 }
+
 
 
 ASTNode* parse_expr(Parser *p) {

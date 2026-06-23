@@ -13,6 +13,7 @@ typedef struct {
 typedef enum {
     NODE_BLOCK,
     NODE_BINARY_OP,
+    NODE_UNARY_OP,
 
     NODE_VAR_DECL_STMT,
     NODE_FUNC_DECL_STMT,
@@ -55,11 +56,16 @@ struct ASTNode {
         Block block;
         FuncDecl func_decl;
         FuncCall func_call;
+
         struct {
             char op;
             ASTNode *left;
             ASTNode *right;
         } binary_op;
+        struct {
+            char op;
+            ASTNode *operand; 
+        } unary_op;
         TokenValue value;
     } data;
 };
@@ -72,6 +78,7 @@ ASTNode* parse_func_call_stmt(Parser *p);
 ASTNode* parse_block(Parser *l);
 ASTNode* parser_create_member_node(NodeType type, TokenValue value);
 ASTNode* parser_create_binary_op_node(char op, ASTNode *left, ASTNode *right);
+ASTNode* parser_create_unary_op_node(char op, ASTNode *operand);
 
 Token parser_peek(Parser *p);
 Token parser_advance(Parser *p);
@@ -79,6 +86,7 @@ Token parser_expect(Parser *p, TokenType type, const char *message);
 
 ASTNode* parse_expr(Parser *p);
 ASTNode* parse_term_expr(Parser *p);
+ASTNode* parse_unary_expr(Parser *p);
 ASTNode* parse_primary_expr(Parser *p);
 
 

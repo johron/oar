@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 int main() {
-    char input[] = "echo 1 \"hihihi\" 3";
+    char input[] = "echo::(\"hihih\", 42);";
 
     Lexer lexer = {
         .src = input,

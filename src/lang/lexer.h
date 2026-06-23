@@ -22,6 +22,7 @@ typedef enum {
     TOK_DOLLAR,
     TOK_ARROW,
 
+    TOK_DB_COLON,
     TOK_DB_MORE,
     TOK_DB_EQUAL,
     TOK_BANG_EQUAL,
