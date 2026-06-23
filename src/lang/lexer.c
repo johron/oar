@@ -31,7 +31,6 @@ const char* get_token_type_string(TokenType type) {
         case TOK_RPAREN: return "TOK_RIGHT_PAREN";
         case TOK_LBRACE: return "TOK_LEFT_BRACE";
         case TOK_RBRACE: return "TOK_RIGHT_BRACE";
-        case TOK_NEWLINE: return "TOK_NEWLINE";
         case TOK_SEMICOLON: return "TOK_SEMICOLON";
         case TOK_EOF: return "TOK_EOF";
         default: return "Unknown TokenType";
@@ -47,7 +46,7 @@ char lexer_advance(Lexer *l) {
 }
 
 void lexer_skip_ws(Lexer *l) {
-    while (isspace(lexer_peek(l)) && lexer_peek(l) != '\n') lexer_advance(l);
+    while (isspace(lexer_peek(l))) lexer_advance(l);
 }
 
 Token lexer_next_token(Lexer *l) {
@@ -203,7 +202,6 @@ Token lexer_next_token(Lexer *l) {
         case '{': return (Token) { .type = TOK_LBRACE };
         case '}': return (Token) { .type = TOK_RBRACE };
 
-        case '\n': return (Token){ .type = TOK_NEWLINE };
         case ';': return (Token){ .type = TOK_SEMICOLON };
         case '\0': return (Token){ .type = TOK_EOF };
 

@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 int main() {
-    char input[] = "fn test() {}";
+    char input[] = "fn test() -> \n void {}";
 
     Lexer lexer = {
         .src = input,
@@ -17,7 +17,8 @@ int main() {
         .pos = 0,
     };
 
-    ASTNode *ast = parse_all(&parser);
+    ASTNode *ast = parse_block(&parser);
+    printf("%d\n", ast->type);
 
     free_tok_array(&tok_array);
 

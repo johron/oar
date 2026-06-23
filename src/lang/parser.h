@@ -2,8 +2,6 @@
 #define PARSER_H
 
 #include "lexer.h"
-#include "parser/statement.h"
-#include "parser/expression.h"
 
 #include <stdlib.h>
 
@@ -33,6 +31,19 @@ typedef union {
 
 typedef struct ASTNode ASTNode;
 
+typedef struct {
+    ASTNode *nodes;
+    size_t size;
+    size_t cap;
+} Block;
+
+typedef struct {
+    char* name;
+    // arguments
+    char* ret_type;
+    Block block;
+} FuncDecl;
+
 struct ASTNode {
     NodeType type;
     union {
@@ -47,13 +58,22 @@ struct ASTNode {
     } data;
 };
 
-ASTNode* parse_all(Parser *l);
+ASTNode* parse_stmt(Parser *p);
+
+ASTNode* parse_func_decl_stmt(Parser *p);
+
+ASTNode* parse_block(Parser *l);
 ASTNode* parser_create_member_node(NodeType type, TokenValue value);
 ASTNode* parser_create_binary_node(char op, ASTNode *left, ASTNode *right);
 
 Token parser_peek(Parser *p);
 Token parser_advance(Parser *p);
 Token parser_expect(Parser *p, TokenType type, const char *message);
+
+ASTNode* parse_expr(Parser *p);
+ASTNode* parse_term_expr(Parser *p);
+ASTNode* parse_primary_expr(Parser *p);
+
 
 void parser_free_ast(ASTNode *node);
 

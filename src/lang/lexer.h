@@ -36,7 +36,6 @@ typedef enum {
     //TOK_RBRACKET,
 
     TOK_SEMICOLON,
-    TOK_NEWLINE,
     TOK_EOF,
 } TokenType;    
 
