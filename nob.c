@@ -18,6 +18,8 @@ int main(int argc, char **argv)
         "-Wextra",
         "-std=c11",
         "src/main.c",
+        "src/lang/lexer.c",
+        "src/lang/parser.c",
         "-o",
         "build/ø"
     );
