@@ -18,7 +18,7 @@ int main(int argc, char **argv)
         "-Wall",
         "-Wextra",
         "-std=gnu11",
-        "src/main.c",
+        "shell/main.c",
         "-o",
         "build/oar",
         "-O2",

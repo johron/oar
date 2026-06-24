@@ -1,7 +1,7 @@
 #define OAR_LANG_IMPLEMENTATION
 #define OAR_USE_EXTERNAL_FUNCTION_SOURCE
 
-#include "oar.h"
+#include "../lang/oar.h"
 
 #include <stdio.h>
 #include <string.h>
