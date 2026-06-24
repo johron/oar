@@ -1,13 +1,14 @@
-#include "lang/lexer.h"
-#include "lang/parser.h"
-#include "lang/evaluator.h"
+#define OAR_LANG_IMPLEMENTATION
+//#define OAR_USE_EXTERNAL_FUNCTION_SOURCE
+
+#include "lang.h"
 
 #include <stdio.h>
 #include <string.h>
 
 int main() {
     EvalCtx *ctx = ctx_new();
-
+    
     while (true) {
         char buffer[8192];
 

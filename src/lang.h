@@ -1,0 +1,1291 @@
+#include <stdio.h>
+#include <ctype.h>
+#include <string.h>
+#include <stdbool.h>
+#include <stdlib.h>
+
+// HEADER
+
+#ifndef OAR_LANG_H
+#define OAR_LANG_H
+
+/* Lexer */
+
+typedef enum {
+    TOK_STR,
+    TOK_NUM,
+    TOK_FLOAT,
+
+    TOK_PLUS,
+    TOK_MINUS,
+    TOK_STAR,
+    TOK_SLASH,
+    TOK_PERCENT,
+
+    TOK_EQUAL,
+    TOK_LESS,
+    TOK_MORE,
+    TOK_BANG,
+    TOK_COMMA,
+    TOK_PIPE,
+    TOK_DOLLAR,
+    TOK_ARROW,
+
+    TOK_DB_COLON,
+    TOK_DB_MORE,
+    TOK_DB_EQUAL,
+    TOK_BANG_EQUAL,
+    TOK_LESS_EQUAL,
+    TOK_MORE_EQUAL,
+
+    TOK_LPAREN,
+    TOK_RPAREN,
+    TOK_LBRACE,
+    TOK_RBRACE,
+    //TOK_LBRACKET,
+    //TOK_RBRACKET,
+
+    TOK_SEMICOLON,
+    TOK_EOF,
+} TokenType;    
+
+typedef union {
+    long int num_value;
+    double float_value;
+    char* str_value;
+} TokenValue;
+
+typedef struct {
+    TokenType type;
+    TokenValue value;
+} Token;
+
+typedef struct {
+    const char *src;
+    size_t pos;
+} Lexer;
+
+typedef struct {
+    Token *data;
+    size_t size;
+    size_t cap;
+} TokenArray;
+
+const char* get_token_type_string(TokenType type);
+
+TokenArray lex_all(Lexer *l);
+void free_tok_array(TokenArray *a);
+
+/* Parser */
+
+typedef struct {
+    TokenArray tok_array;
+    size_t pos;
+} Parser;
+
+typedef enum {
+    NODE_BLOCK,
+    NODE_BINARY_OP,
+    NODE_UNARY_OP,
+
+    NODE_VAR_DECL_STMT,
+    NODE_FUNC_DECL_STMT,
+    NODE_FUNC_CALL_STMT,
+
+    NODE_VALUE_NUMBER,
+    NODE_VALUE_FLOAT,
+    NODE_VALUE_STRING,
+    NODE_VALUE_VAR_REF,
+} NodeType;
+
+static inline const char* get_node_type_string(NodeType type) {
+    switch (type) {
+        case NODE_BLOCK: return "NODE_BLOCK";
+        case NODE_BINARY_OP: return "NODE_BINARY_OP";
+        case NODE_UNARY_OP: return "NODE_UNARY_OP";
+        case NODE_VAR_DECL_STMT: return "NODE_VAR_DECL_STMT";
+        case NODE_FUNC_DECL_STMT: return "NODE_FUNC_DECL_STMT";
+        case NODE_FUNC_CALL_STMT: return "NODE_FUNC_CALL_STMT";
+        case NODE_VALUE_NUMBER: return "NODE_VALUE_NUMBER";
+        case NODE_VALUE_FLOAT: return "NODE_VALUE_FLOAT";
+        case NODE_VALUE_STRING: return "NODE_VALUE_STRING";
+        case NODE_VALUE_VAR_REF: return "NODE_VALUE_VAR_REF";
+        default: {
+            fprintf(stderr, "Unrecognized node type '%d'\n", type);
+            exit(1);
+        }
+    }
+};
+
+typedef union {
+    int number_value;
+    char* str_value;
+    char* ident_value;
+} NodeValue;
+
+typedef struct ASTNode ASTNode;
+
+typedef struct {
+    ASTNode *nodes;
+    size_t size;
+    size_t cap;
+} Block;
+
+typedef struct {
+    char* name;
+    // arguments
+    char* ret_type;
+    ASTNode *body; // NodeType = NODE_BLOCK
+} FuncDecl;
+
+typedef struct {
+    char* name;
+    Block args;
+} FuncCall;
+
+typedef struct {
+    char* name;
+    ASTNode *expr;
+} VarDecl;
+
+struct ASTNode {
+    NodeType type;
+    union {
+        Block block;
+        VarDecl var_decl;
+        FuncDecl func_decl;
+        FuncCall func_call;
+
+        struct {
+            char op;
+            ASTNode *left;
+            ASTNode *right;
+        } binary_op;
+        struct {
+            char op;
+            ASTNode *operand; 
+        } unary_op;
+        TokenValue value;
+    } data;
+};
+
+ASTNode* parse_stmt(Parser *p);
+
+ASTNode* parse_var_decl_stmt(Parser *p);
+ASTNode* parse_func_decl_stmt(Parser *p);
+ASTNode* parse_func_call_stmt(Parser *p);
+
+ASTNode* parse_block(Parser *l);
+
+void parser_init_block(Block *block);
+void parser_block_push_node(Block *block, ASTNode *node);
+
+ASTNode* parser_create_member_node(NodeType type, TokenValue value);
+ASTNode* parser_create_binary_op_node(char op, ASTNode *left, ASTNode *right);
+ASTNode* parser_create_unary_op_node(char op, ASTNode *operand);
+
+Token parser_peek(Parser *p);
+Token parser_advance(Parser *p);
+Token parser_expect(Parser *p, TokenType type, const char *message);
+
+ASTNode* parse_expr(Parser *p);
+ASTNode* parse_term_expr(Parser *p);
+ASTNode* parse_unary_expr(Parser *p);
+ASTNode* parse_primary_expr(Parser *p);
+
+
+void parser_free_ast(ASTNode *node);
+
+/* Evaluator */
+
+typedef enum {
+    ENTRY_VAR,
+    ENTRY_FUNC,
+} EntryType;
+
+static inline const char* get_entry_type_string(EntryType type) {
+    switch (type) {
+        case ENTRY_VAR: return "ENTRY_VAR";
+        case ENTRY_FUNC: return "ENTRY_FUNC";
+        default: {
+            fprintf(stderr, "Unrecognized entry type '%d'\n", type);
+            exit(1);
+        }
+    }
+};
+
+static inline const char* get_entry_type_string_pretty(EntryType type) {
+    switch (type) {
+        case ENTRY_VAR: return "variable";
+        case ENTRY_FUNC: return "function";
+        default: {
+            fprintf(stderr, "Unrecognized entry type '%d'\n", type);
+            exit(1);
+        }
+    }
+};
+
+typedef enum {
+    VAL_NUM,
+    VAL_FLOAT,
+    VAL_STR,
+    VAL_VOID,
+} ValueType;
+
+typedef struct {
+    ValueType type;
+    union {
+        int num_val;
+        double float_val;
+        char *str_val;
+    };
+} RuntimeValue;
+
+typedef RuntimeValue (*RuntimeFunc)(RuntimeValue *args, size_t argc);
+
+static inline RuntimeValue val_num(int v) {
+    return (RuntimeValue){ .type = VAL_NUM, .num_val = v };
+}
+
+static inline RuntimeValue val_float(double v) {
+    return (RuntimeValue){ .type = VAL_FLOAT, .float_val = v };
+}
+
+static inline RuntimeValue val_void() {
+    return (RuntimeValue){ .type = VAL_VOID };
+}
+
+RuntimeValue val_str(const char *s);
+void val_free(RuntimeValue *v);
+RuntimeValue val_clone(RuntimeValue v);
+
+typedef struct EnvEntry EnvEntry;
+typedef struct Env Env;
+
+struct EnvEntry {
+    char *name;
+    EntryType type;
+    union {
+        RuntimeValue value;
+        RuntimeFunc func;
+    };
+    EnvEntry *next;
+};
+
+struct Env {
+    EnvEntry *head;
+    Env *parent;
+};
+
+Env *env_new(Env *parent);
+void env_free(Env *env);
+void env_set_var(Env *env, const char *name, RuntimeValue value);
+void env_set_func(Env *env, const char *name, RuntimeFunc func);
+bool env_get_var(Env *env, const char *name, RuntimeValue *out);
+RuntimeFunc env_get_func(Env *env, const char *name);
+
+void entry_free(EnvEntry *entry);
+
+typedef struct {
+    Env          *env;
+#ifdef OAR_USE_EXTERNAL_FUNCTION_SOURCE
+    RuntimeFunc (*env_get_func_external)(Env *env, const char *name);
+#endif
+} EvalCtx;
+
+EvalCtx *ctx_new(void);
+void ctx_free(EvalCtx *ctx);
+
+RuntimeValue eval(EvalCtx *ctx, ASTNode *node);
+RuntimeValue eval_arith(char op, RuntimeValue left, RuntimeValue right);
+
+RuntimeValue builtin_echo(RuntimeValue *args, size_t argc);
+
+#endif
+
+// Implementation
+
+#ifdef OAR_LANG_IMPLEMENTATION
+
+/* Lexer */
+
+const char* get_token_type_string(TokenType type) {
+    switch (type) {
+        case TOK_STR: return "TOK_STR";
+        case TOK_NUM: return "TOK_NUM";
+        case TOK_FLOAT: return "TOK_FLOAT";
+        case TOK_PLUS: return "TOK_PLUS";
+        case TOK_MINUS: return "TOK_MINUS";
+        case TOK_STAR: return "TOK_STAR";
+        case TOK_SLASH: return "TOK_SLASH";
+        case TOK_PERCENT: return "TOK_PERCENT";
+        case TOK_EQUAL: return "TOK_EQUAL";
+        case TOK_LESS: return "TOK_LESS";
+        case TOK_MORE: return "TOK_MORE";
+        case TOK_BANG: return "TOK_BANG";
+        case TOK_COMMA: return "TOK_COMMA";
+        case TOK_PIPE: return "TOK_PIPE";
+        case TOK_DOLLAR: return "TOK_DOLLAR";
+        case TOK_ARROW: return "TOK_ARROW";
+        case TOK_DB_COLON: return "TOK_DB_COLON";
+        case TOK_DB_MORE: return "TOK_DB_MORE";
+        case TOK_DB_EQUAL: return "TOK_DB_EQUAL";
+        case TOK_BANG_EQUAL: return "TOK_BANG_EQUAL";
+        case TOK_LESS_EQUAL: return "TOK_LESS_EQUAL";
+        case TOK_MORE_EQUAL: return "TOK_MORE_EQUAL";
+        case TOK_LPAREN: return "TOK_LPAREN";
+        case TOK_RPAREN: return "TOK_RPAREN";
+        case TOK_LBRACE: return "TOK_LBRACE";
+        case TOK_RBRACE: return "TOK_RBRACE";
+        case TOK_SEMICOLON: return "TOK_SEMICOLON";
+        case TOK_EOF: return "TOK_EOF";
+        default: return "Unknown TokenType";
+    }
+}
+
+char lexer_peek(Lexer *l) {
+    return l->src[l->pos];
+}
+
+char lexer_advance(Lexer *l) {
+    return l->src[l->pos++];
+}
+
+void lexer_skip_ws(Lexer *l) {
+    while (isspace(lexer_peek(l))) lexer_advance(l);
+}
+
+Token lexer_next_token(Lexer *l) {
+    lexer_skip_ws(l);
+
+    char c = lexer_peek(l);
+
+    if (isdigit(c)) {
+        long int num = 0;
+
+        while (isdigit(lexer_peek(l))) {
+            num = num * 10 + (lexer_advance(l) - '0');
+        }
+
+        double decimal = 0.0;
+        if (lexer_peek(l) == '.') {
+            lexer_advance(l);
+            double place = 0.1;
+            while (isdigit(lexer_peek(l))) {
+                decimal += (lexer_advance(l) - '0') * place;
+                place *= 0.1f;
+            }
+
+            return (Token){
+                .type = TOK_FLOAT,
+                .value = {
+                    .float_value = num + decimal,
+                }
+            };
+        }
+
+        return (Token){
+            .type = TOK_NUM,
+            .value = {
+                .num_value = num,
+            }
+        };
+    }
+
+
+    if (isalpha((unsigned char)c)) {
+        size_t cap = 128;
+        char *str = malloc(cap);
+        size_t i = 0;
+
+        while ((c = lexer_peek(l)), isalnum((unsigned char)c)) {
+            if (i >= cap) {
+                cap *= 2;
+                char *next_str = realloc(str, cap);
+                if (next_str == NULL) {
+                    free(str);
+                    fprintf(stderr, "Error: out of memory");
+                    exit(1);                    
+                }
+                str = next_str;
+            }
+            
+            lexer_advance(l);
+            str[i++] = c;
+        }
+
+        str[i] = '\0';
+
+        return (Token){
+            .type = TOK_STR,
+            .value = {
+                .str_value = str,
+            }
+        };
+    }
+
+    if (c == '"') {
+        lexer_advance(l);
+        size_t cap = 128;
+        char *str = malloc(cap);
+        size_t i = 0;
+
+        while (lexer_peek(l) != '"' && lexer_peek(l) != '\0') {
+            c = lexer_advance(l);
+            if (i >= cap - 1) {
+                cap *= 2;
+                char *next_str = realloc(str, cap);
+                if (next_str == NULL) {
+                    free(str);
+                    fprintf(stderr, "Error: out of memory\n");
+                    exit(1);                    
+                }
+                str = next_str;
+            }
+            
+            str[i++] = c;
+        }
+
+        str[i] = '\0';
+
+        if (lexer_peek(l) == '"') {
+            lexer_advance(l);
+        } else {
+            free(str);
+            fprintf(stderr, "Error: missing '\"' to close string\n");
+            exit(1);
+        }
+
+        return (Token){
+            .type = TOK_STR,
+            .value = {
+                .str_value = str,
+            }
+        };
+    }
+
+    lexer_advance(l);
+
+    switch (c) {
+        case '+': return (Token) { .type = TOK_PLUS };
+        case '*': return (Token) { .type = TOK_STAR };
+        case '/': return (Token) { .type = TOK_SLASH };
+        case '%': return (Token) { .type = TOK_PERCENT };
+
+        case '-': {
+            if (lexer_peek(l) == '>') {
+                lexer_advance(l);
+                return (Token) { .type = TOK_ARROW };
+            } else {
+                return (Token) { .type = TOK_MINUS};
+            }
+        };
+        case '=': {
+            if (lexer_peek(l) == '=') {
+                lexer_advance(l);
+                return (Token) { .type = TOK_DB_EQUAL };
+            } else {
+                return (Token) { .type = TOK_EQUAL };
+            }
+        };
+        case '<': {
+            if (lexer_peek(l) == '=') {
+                lexer_advance(l);
+                return (Token) { .type = TOK_LESS_EQUAL };
+            } else {
+                return (Token) { .type = TOK_LESS };
+            }
+        };
+        case '>': {
+            if (lexer_peek(l) == '=') {
+                lexer_advance(l);
+                return (Token) { .type = TOK_MORE_EQUAL };
+            } else if (lexer_peek(l) == '>') {
+                lexer_advance(l);
+                return (Token) { .type = TOK_DB_MORE };
+            } else {
+                return (Token) { .type = TOK_MORE };
+            }
+        };
+        case '!': {
+            if (lexer_peek(l) == '=') {
+                lexer_advance(l);
+                return (Token) { .type = TOK_BANG_EQUAL };
+            } else {
+                return (Token) { .type = TOK_BANG };
+            }
+        };
+        case ':': {
+            if (lexer_peek(l) == ':') {
+                lexer_advance(l);
+                return (Token) { .type = TOK_DB_COLON };
+            }
+
+            fprintf(stderr, "Unexpected ':'\n");
+            exit(1);
+        }
+        
+        case ',': return (Token) { .type = TOK_COMMA };
+        case '|': return (Token) { .type = TOK_PIPE };
+        case '$': return (Token) { .type = TOK_DOLLAR };
+ 
+        case '(': return (Token) { .type = TOK_LPAREN };
+        case ')': return (Token) { .type = TOK_RPAREN };
+        case '{': return (Token) { .type = TOK_LBRACE };
+        case '}': return (Token) { .type = TOK_RBRACE };
+
+        case ';': return (Token){ .type = TOK_SEMICOLON };
+        case '\0': return (Token){ .type = TOK_EOF };
+
+        default:
+            printf("Unknown character: '%c'\n", c);
+            exit(1);
+    }
+}
+
+void init_tok_array(TokenArray *a) {
+    a->size = 0;
+    a->cap = 32;
+    a->data = malloc(a->cap * sizeof(Token));
+
+    if (a->data == NULL) {
+        fprintf(stderr, "Could not allocate memory for token array data");
+        exit(1);
+    }
+}
+
+void push_token(TokenArray *a, Token t) {
+    if (a->size >= a->cap) {
+        a->cap *= 2;
+        a->data = realloc(a->data, a->cap * sizeof(Token));
+    }
+
+    a->data[a->size++] = t;
+}
+
+TokenArray lex_all(Lexer *l) {
+    TokenArray arr;
+    init_tok_array(&arr);
+
+    while (true) {
+        Token t = lexer_next_token(l);
+        push_token(&arr, t);
+
+        if (t.type == TOK_EOF)
+            break;
+    }
+
+    return arr;
+}
+
+void free_tok_array(TokenArray *a) {
+    if (a == NULL) return;
+
+    for (size_t i = 0; i < a->size; i++) {
+        switch (a->data[i].type) {
+            case TOK_STR: {
+                if (a->data[i].value.str_value != NULL) {
+                    free(a->data[i].value.str_value);
+                    a->data[i].value.str_value = NULL;
+                }
+                break;
+            };
+            default: {};
+            // case TOK_NUM: {}; // This tok has data, but not in heap
+        }
+    }
+
+    free(a->data);
+    a->data = NULL;
+
+    a->size = 0;
+    a->cap = 0;
+}
+
+/* Parser */
+
+void parser_init_block(Block *block) {
+    block->size = 0;
+    block->cap = 32;
+    block->nodes = malloc(block->cap * sizeof(ASTNode));
+
+    if (block->nodes == NULL) {
+        fprintf(stderr, "Could not allocate memory for nodes in block");
+        exit(1);
+    }
+}
+
+void parser_block_push_node(Block *block, ASTNode *node) {
+    if (block->size >= block->cap) {
+        block->cap *= 2;
+        block->nodes = realloc(block->nodes, block->cap * sizeof(ASTNode));
+    }
+
+    block->nodes[block->size++] = *node;
+}
+
+ASTNode* parse_block(Parser *p) {
+    Block block;
+    parser_init_block(&block);
+
+    while (p->pos < p->tok_array.size && parser_peek(p).type != TOK_EOF && parser_peek(p).type != TOK_RBRACE) {
+        ASTNode *node = parse_stmt(p);
+        if (node != NULL) {
+            parser_block_push_node(&block, node);
+        }
+    }
+
+    ASTNode *ast = malloc(sizeof(ASTNode));
+    ast->type = NODE_BLOCK;
+    ast->data.block = block;
+    return ast;
+}
+
+
+
+Token parser_peek(Parser *p) {
+    return p->tok_array.data[p->pos];
+}
+
+Token parser_advance(Parser *p) {
+    if (parser_peek(p).type != TOK_EOF) {
+        p->pos++;
+    }
+
+    return p->tok_array.data[p->pos - 1];
+}
+
+Token parser_expect(Parser *p, TokenType type, const char *message) {
+    if (parser_peek(p).type == type) {
+        return parser_advance(p);
+    }
+    fprintf(stderr, "Parser Error: %s, got %s\n", message, get_token_type_string(parser_peek(p).type));
+    exit(1);
+}
+
+void parser_free_ast(ASTNode *node) {
+    if (!node) return;
+
+    if (node->type == NODE_BINARY_OP) {
+        parser_free_ast(node->data.binary_op.left);
+        parser_free_ast(node->data.binary_op.right);
+    } else if (node->type == NODE_UNARY_OP) {
+        parser_free_ast(node->data.unary_op.operand);
+    }
+
+    free(node);
+}
+
+ASTNode* parser_create_member_node(NodeType type, TokenValue value) {
+    ASTNode *node = malloc(sizeof(ASTNode));
+    if (!node) {
+        return NULL;
+    }
+
+    node->type = type;
+    node->data.value = value;
+
+    return node;
+}
+
+ASTNode* parser_create_binary_op_node(char op, ASTNode *left, ASTNode *right) {
+    ASTNode *node = malloc(sizeof(ASTNode));
+    if (!node) {
+        return NULL;
+    }
+
+    node->type = NODE_BINARY_OP;
+    node->data.binary_op.op = op;
+    node->data.binary_op.left = left;
+    node->data.binary_op.right = right;
+
+    return node;
+}
+
+ASTNode* parser_create_unary_op_node(char op, ASTNode *operand) {
+    ASTNode *node = (ASTNode*)malloc(sizeof(ASTNode));
+    if (!node) {
+        fprintf(stderr, "Parser Error: Allocation failed for unary node.\n");
+        exit(1);
+    }
+    
+    node->type = NODE_UNARY_OP;
+    node->data.unary_op.op = op;
+    node->data.unary_op.operand = operand;
+    
+    return node;
+}
+
+
+ASTNode* parse_stmt(Parser *p);
+
+ASTNode* parse_stmt(Parser *p) {
+    switch (p->tok_array.data[p->pos].type) {
+        case TOK_STR: {
+            Token tok = parser_peek(p);
+
+            if (strcmp(tok.value.str_value, "fn") == false) { // fn x(...)
+                return parse_func_decl_stmt(p);
+            } else if (strcmp(tok.value.str_value, "let") == false) { // let $x = ... (;)
+                return parse_var_decl_stmt(p);
+            } else { // treat as function call 
+                return parse_func_call_stmt(p);
+            }
+
+            printf("parse_stmt() is unimplemented for TOK_STR\n");
+            exit(1);
+        };
+        case TOK_LPAREN: { // statement enclosure
+            parser_advance(p);
+            ASTNode *stmt = parse_stmt(p);
+            parser_expect(p, TOK_RPAREN, "Expected parenthesis to close statement enclosure");
+            return stmt;
+        };
+        default: { // TODO: add some expression statement stuff somewhere here
+            fprintf(stderr, "Unexpected tokens found while parsing statement, got %s\n", get_token_type_string(p->tok_array.data[p->pos].type));
+            exit(1);
+        };
+    }
+}
+
+ASTNode* parse_var_decl_stmt(Parser *p) {
+    ASTNode *node = malloc(sizeof(ASTNode));
+
+    parser_expect(p, TOK_STR, "Expected let keyword to declare variable");
+    parser_expect(p, TOK_DOLLAR, "Expected dollar sign to name variable in declaration");
+    Token var_tok = parser_expect(p, TOK_STR, "Expected string/identifier variable name for declaration");
+    parser_expect(p, TOK_EQUAL, "Expected equals sign in variable declarataion");
+
+    ASTNode *expr = parse_expr(p);
+
+    if (parser_peek(p).type != TOK_EOF) {
+        parser_expect(p, TOK_SEMICOLON, "Expected semicolon to complete variable declaration");
+    }
+
+    VarDecl var_decl = {
+        .name = var_tok.value.str_value,
+        .expr = expr,
+    };
+
+    node->type = NODE_VAR_DECL_STMT;
+    node->data.var_decl = var_decl;
+
+    return node;
+}
+
+ASTNode* parse_func_call_stmt(Parser *p) {
+    ASTNode *node = malloc(sizeof(ASTNode));
+
+    Token func_tok = parser_expect(p, TOK_STR, "Expected the string/identifier to call");
+
+    Block args;
+    parser_init_block(&args);
+
+    if (parser_peek(p).type == TOK_DB_COLON) { // parse as func::(arg1, arg2, ...)
+        parser_advance(p);
+        parser_expect(p, TOK_LPAREN, "Expected opening parenthesis to open function call");
+
+        while (parser_peek(p).type != TOK_RPAREN) {
+            ASTNode *expr = parse_expr(p);
+
+            if (parser_peek(p).type != TOK_RPAREN) {
+                parser_expect(p, TOK_COMMA, "Expected comma to continue argument list");
+            }
+
+            parser_block_push_node(&args, expr);
+        }
+
+        parser_expect(p, TOK_RPAREN, "Expected closing parenthesis to close function call");
+    } else { // parse as func arg1 arg2 ...;
+        while (parser_peek(p).type != TOK_EOF && parser_peek(p).type != TOK_SEMICOLON) {
+            if (parser_peek(p).type == TOK_LPAREN) { // parse as normal full expression
+                parser_advance(p);
+
+                ASTNode *expr = parse_expr(p);
+
+                parser_expect(p, TOK_RPAREN, "Expected closing parenthesis to close expression closure");
+
+                parser_block_push_node(&args, expr);
+            } else { // only parse simple expression, unary
+                ASTNode *expr = parse_unary_expr(p);
+                parser_block_push_node(&args, expr);
+            }
+        }
+    }
+
+    if (parser_peek(p).type != TOK_EOF) {
+        parser_expect(p, TOK_SEMICOLON, "Expected semicolon to complete function call expression");
+    }
+
+    FuncCall func_call = {
+        .args = args,
+        .name = func_tok.value.str_value,
+    };
+
+    node->type = NODE_FUNC_CALL_STMT;
+    node->data.func_call = func_call;
+
+    return node;
+}
+
+ASTNode* parse_func_decl_stmt(Parser *p) {
+    ASTNode *node = malloc(sizeof(ASTNode));
+
+    parser_expect(p, TOK_STR, "Expected fn keyword to declare function");
+    Token name_tok = parser_expect(p, TOK_STR, "Expected a string/identifier for function name");
+    parser_expect(p, TOK_LPAREN, "Expected parenthesis to open argument definition for function declaration");
+    // parse argument definition
+    parser_expect(p, TOK_RPAREN, "Expected parenthesis to close argument definition for function declaration");
+
+    parser_expect(p, TOK_ARROW, "Expected an arrow ('->') to specify return type for function declaration");
+    Token ret_type_tok = parser_expect(p, TOK_STR, "Expected a string/identifier for function return type");
+
+    parser_expect(p, TOK_LBRACE, "Expected left brace to open function body");
+    ASTNode *body = parse_block(p);
+    parser_expect(p, TOK_RBRACE, "Expected left brace to close function body");
+
+    FuncDecl func_decl = {
+        .name = name_tok.value.str_value,
+        .ret_type = ret_type_tok.value.str_value,
+        .body = body,
+    };
+
+    node->type = NODE_FUNC_DECL_STMT;
+    node->data.func_decl = func_decl;
+
+    return node;
+}
+
+ASTNode* parse_primary_expr(Parser *p) {
+    Token token = parser_peek(p);
+
+    switch (token.type) {
+        case TOK_NUM: parser_advance(p); return parser_create_member_node(NODE_VALUE_NUMBER, token.value);
+        case TOK_FLOAT: parser_advance(p); return parser_create_member_node(NODE_VALUE_FLOAT, token.value);
+        case TOK_STR: parser_advance(p); return parser_create_member_node(NODE_VALUE_STRING, token.value);
+
+        case TOK_DOLLAR: {
+            parser_advance(p);
+            Token var_tok = parser_expect(p, TOK_STR, "Expected variable name for variable reference");
+            return parser_create_member_node(NODE_VALUE_VAR_REF, var_tok.value);
+        };
+
+        case TOK_LPAREN: {
+            parser_advance(p);
+            ASTNode *node = parse_expr(p);
+            parser_expect(p, TOK_RPAREN, "Expected ')' after expression");
+            return node;
+        };
+
+        default: {
+            fprintf(stderr, "Parser Error: Unexpected token in primary expression %s\n", get_token_type_string(token.type));
+            exit(1);
+        }
+    }
+}
+
+ASTNode* parse_unary_expr(Parser *p) {
+    Token token = parser_peek(p);
+
+    if (token.type == TOK_MINUS || token.type == TOK_PLUS || token.type == TOK_BANG) {
+        parser_advance(p);
+        
+        char op;
+        if (token.type == TOK_MINUS) op = '-';
+        else if (token.type == TOK_PLUS) op = '+';
+        else if (token.type == TOK_BANG) op = '!';
+        else {
+            fprintf(stderr, "Invalid operator for unary expression");
+            exit(1);
+        }
+
+        ASTNode *operand = parse_unary_expr(p);
+        
+        return parser_create_unary_op_node(op, operand);
+    }
+
+    return parse_primary_expr(p);
+}
+
+ASTNode* parse_term_expr(Parser *p) {
+    ASTNode *expr = parse_unary_expr(p); 
+
+    while (parser_peek(p).type == TOK_STAR || parser_peek(p).type == TOK_SLASH) {
+        Token op_token = parser_peek(p);
+        parser_advance(p);
+        
+        char op = (op_token.type == TOK_STAR) ? '*' : '/';
+        
+        ASTNode *right = parse_unary_expr(p); 
+        expr = parser_create_binary_op_node(op, expr, right);
+    }
+
+    return expr;
+}
+
+
+
+ASTNode* parse_expr(Parser *p) {
+    //bool enclosed = false;
+    //if (parser_peek(p).type == TOK_LPAREN) {
+    //    parser_advance(p);
+    //    enclosed = true;
+    //}
+
+    ASTNode *expr = parse_term_expr(p);
+
+    while (parser_peek(p).type == TOK_PLUS || parser_peek(p).type == TOK_MINUS) {
+        Token op_token = parser_peek(p);
+        parser_advance(p);
+        
+        char op = (op_token.type == TOK_PLUS) ? '+' : '-';
+        
+        ASTNode *right = parse_term_expr(p);
+        expr = parser_create_binary_op_node(op, expr, right);
+    }
+
+    //if (enclosed == true) {
+    //    parser_expect(p, TOK_RPAREN, "Expected closing parenthesis to close expression enclosure");
+    //}
+
+    return expr;
+}
+
+/* Evaluator */
+
+RuntimeValue val_str(const char *s) {
+    RuntimeValue v = { .type = VAL_STR };
+    v.str_val = strdup(s);
+    return v;
+}
+
+void val_free(RuntimeValue *v) {
+    if (v && v->type == VAL_STR && v->str_val) {
+        free(v->str_val);
+        v->str_val = NULL;
+    }
+}
+
+RuntimeValue val_clone(RuntimeValue v) {
+    if (v.type == VAL_STR && v.str_val)
+        return val_str(v.str_val);
+    return v;
+}
+
+void entry_free(EnvEntry *entry) {
+    if (entry->type == ENTRY_VAR) {
+        if (entry->value.type == VAL_STR && entry->value.str_val) {
+            free(entry->value.str_val);
+            entry->value.str_val = NULL;
+        }
+    // } else if (entry->type == ENTRY_FUNC) { // not needed
+    }
+}
+
+Env *env_new(Env *parent) {
+    Env *e = malloc(sizeof(Env));
+    e->head   = NULL;
+    e->parent = parent;
+    return e;
+}
+
+void env_free(Env *env) {
+    EnvEntry *e = env->head;
+    while (e) {
+        EnvEntry *next = e->next;
+        free(e->name);
+        entry_free(e);
+        free(e);
+        e = next;
+    }
+    free(env);
+}
+
+void env_set_var(Env *env, const char *name, RuntimeValue value) {
+    for (Env *scope = env; scope; scope = scope->parent) {
+        for (EnvEntry *e = scope->head; e; e = e->next) {
+            if (strcmp(e->name, name) == false) {
+                if (e->type != ENTRY_VAR) {
+                    fprintf(stderr, "Cannot redefine %s '%s' as variable\n", get_entry_type_string_pretty(e->type), name);
+                    exit(1);
+                }
+
+                val_free(&e->value); // TODO: implement val_free
+                e->value = val_clone(value);
+                return;
+            }
+        }
+    }
+
+    EnvEntry *entry = malloc(sizeof(EnvEntry));
+    entry->name = strdup(name);
+    entry->type = ENTRY_VAR;
+    entry->value = val_clone(value);
+    entry->next = env->head;
+    env->head = entry;
+}
+
+void env_set_func(Env *env, const char *name, RuntimeFunc func) {
+    for (Env *scope = env; scope; scope = scope->parent) {
+        for (EnvEntry *e = scope->head; e; e = e->next) {
+            if (strcmp(e->name, name) == false) {
+                if (e-> type != ENTRY_FUNC) {
+                    fprintf(stderr, "Cannot redefine already defined %s '%s'\n", get_entry_type_string_pretty(e->type), name);
+                    exit(1);
+                }
+
+                fprintf(stderr, "Cannot redefine already defined function '%s\n", name);
+                exit(1);
+            }
+        }
+    }
+
+    EnvEntry *entry = malloc(sizeof(EnvEntry));
+    entry->name = strdup(name);
+    entry->type = ENTRY_FUNC;
+    entry->func = func;
+    entry->next = env->head;
+    env->head = entry;
+}
+
+bool env_get_var(Env *env, const char *name, RuntimeValue *out) {
+    for (Env *scope = env; scope; scope = scope->parent) {
+        for (EnvEntry *e = scope->head; e; e = e->next) {
+            if (strcmp(e->name, name) == false) {
+                if (e->type != ENTRY_VAR) {
+                    fprintf(stderr, "Tried to reference variable as %s\n", get_entry_type_string_pretty(e->type));
+                    exit(1);
+                }
+
+                *out = val_clone(e->value);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+RuntimeFunc env_get_func(Env *env, const char *name) {
+    for (Env *scope = env; scope; scope = scope->parent) {
+        for (EnvEntry *e = scope->head; e; e = e->next) {
+            if (strcmp(e->name, name) == false) {
+                if (e->type != ENTRY_FUNC) {
+                    fprintf(stderr, "Tried to reference function as %s\n", get_entry_type_string_pretty(e->type));
+                    exit(1);
+                }
+
+                return e->func;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+EvalCtx *ctx_new(void) {
+    EvalCtx *ctx  = malloc(sizeof(EvalCtx));
+    ctx->env      = env_new(NULL);
+
+    env_set_func(ctx->env, "echo", builtin_echo);
+
+    return ctx;
+}
+
+void ctx_free(EvalCtx *ctx) {
+    env_free(ctx->env);
+    free(ctx);
+}
+
+RuntimeValue eval_arith(char op, RuntimeValue left, RuntimeValue right) {
+    if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
+        double l = (left.type == VAL_FLOAT) ? left.float_val : (double) left.num_val;
+        double r = (right.type == VAL_FLOAT) ? right.float_val : (double) right.num_val;
+
+        switch (op) {
+            case '+': return val_float(l + r);
+            case '-': return val_float(l - r);
+            case '*': return val_float(l * r);
+            case '/': {
+                if (r == 0.0) {
+                    fprintf(stderr, "Runtime error: division by zero\n");
+                    exit(1);
+                }
+                return val_float(l / r);
+            };
+        }
+    }
+
+    long int l = left.num_val;
+    long int r = right.num_val;
+    
+    switch (op) {
+        case '+': return val_num(l + r);
+        case '-': return val_num(l - r);
+        case '*': return val_num(l * r);
+        case '/': {
+            if (r == 0) {
+                fprintf(stderr, "Runtime error: division by zero\n");
+                exit(1);
+            }
+            
+            if (l % r == 0) {
+                return val_num(l / r);
+            } else {
+                return val_float((double) l / (double) r);
+            }
+        };
+    }
+
+    fprintf(stderr, "Runtime error: unknown arithmetic operator '%c'\n", op);
+    exit(1);
+}
+
+RuntimeValue eval(EvalCtx *ctx, ASTNode *node) {
+    if (!node) return val_num(0);
+
+    switch (node->type) {
+        case NODE_VALUE_NUMBER: return val_num(node->data.value.num_value);
+        case NODE_VALUE_FLOAT: return val_float(node->data.value.float_value);
+        case NODE_VALUE_STRING: return val_str(node->data.value.str_value);
+
+        case NODE_VALUE_VAR_REF: {
+            RuntimeValue v;
+            if (!env_get_var(ctx->env, node->data.value.str_value, &v)) {
+                fprintf(stderr, "Runtime error: undefined variable '$%s'\n", node->data.value.str_value);
+                exit(1);
+            }
+            return v;
+        };
+
+        case NODE_BINARY_OP: {
+            RuntimeValue left = eval(ctx, node->data.binary_op.left);
+            RuntimeValue right = eval(ctx, node->data.binary_op.right);
+            char op = node->data.binary_op.op;
+
+            RuntimeValue result;
+            if (op == '+' && (left.type == VAL_STR || right.type == VAL_STR)) {
+                char lbuf[64], rbuf[64];
+                const char *left_side = (left.type == VAL_STR) ? left.str_val : (snprintf(lbuf, sizeof lbuf,
+                    left.type == VAL_FLOAT ? "%g" : "%f",
+                    left.type == VAL_FLOAT ? left.float_val : left.num_val), lbuf);
+                const char *right_side = (right.type == VAL_STR) ? right.str_val : (snprintf(rbuf, sizeof rbuf,
+                    right.type == VAL_FLOAT ? "%g" : "%f",
+                    right.type == VAL_FLOAT ? right.float_val : right.num_val), rbuf);
+                
+                size_t len = strlen(left_side) + strlen(right_side) + 1;
+                char *buf = malloc(len);
+                snprintf(buf, len, "%s%s", left_side, right_side);
+                result = (RuntimeValue) {
+                    .type = VAL_STR,
+                    .str_val = buf,
+                };
+            } else {
+                result = eval_arith(op, left, right);
+            }
+
+            val_free(&left);
+            val_free(&right);
+            return result;
+        };
+
+        case NODE_UNARY_OP: {
+            RuntimeValue v = eval(ctx, node->data.unary_op.operand);
+            char op = node->data.unary_op.op;
+            if (op == '-') {
+                if (v.type == VAL_FLOAT) return val_float(-v.float_val);
+                return val_num(-v.num_val);
+            }
+            if (op == '+') return v;
+            if (op == '!') return val_num(!v.num_val);
+            fprintf(stderr, "Runtime error: unknown unary op '%c'\n", op);
+            exit(1);
+        };
+
+        case NODE_VAR_DECL_STMT: {
+            RuntimeValue v = eval(ctx, node->data.var_decl.expr);
+            env_set_var(ctx->env, node->data.var_decl.name, v);
+            val_free(&v);
+            return val_void();
+        };
+
+        case NODE_FUNC_CALL_STMT: {
+            const char *name = node->data.func_call.name;
+            Block *args_block = &node->data.func_call.args;
+
+            size_t argc = args_block ? args_block->size : 0;
+            RuntimeValue *args = argc ? malloc(argc * sizeof(RuntimeValue)) : NULL;
+            for (size_t i = 0; i < argc; i++)
+                args[i] = eval(ctx, &args_block->nodes[i]);
+
+            RuntimeValue result = val_void();
+
+            RuntimeFunc func = env_get_func(ctx->env, name);
+            if (func != NULL) {
+                result = func(args, argc);
+            } else {
+                #ifdef OAR_USE_EXTERNAL_FUNCTION_SOURCE
+                printf("we are here\n");
+                RuntimeFunc extern_func = ctx->env_get_func_external(ctx->env, name);
+                if (extern_func != NULL) {
+                    result = extern_func(args, argc);
+                } else {
+                    fprintf(stderr, "Runtime error: unknown function '%s'\n", name);
+                    exit(1);
+                }
+                #else
+                fprintf(stderr, "Runtime error: unknown function '%s'\n", name);
+                exit(1);
+                #endif
+            }
+
+            for (size_t i = 0; i < argc; i++) val_free(&args[i]);
+            free(args);
+            return result;
+        };
+
+        case NODE_FUNC_DECL_STMT: {
+            fprintf(stderr, "func decl unimplemented");
+            exit(1);
+        };
+
+        case NODE_BLOCK: {
+            RuntimeValue last = val_void();
+            Env *child = env_new(ctx->env);
+            Env *saved = ctx->env;
+            ctx->env   = child;
+
+            for (size_t i = 0; i < node->data.block.size; i++) {
+                val_free(&last);
+                last = eval(ctx, &node->data.block.nodes[i]);
+            }
+
+            ctx->env = saved;
+            env_free(child);
+            return last;
+        }
+
+        default: {
+            fprintf(stderr, "Runtime error: unhandled node type %s\n", get_node_type_string(node->type));
+            exit(1);
+        };
+    }
+}
+
+RuntimeValue builtin_echo(RuntimeValue *args, size_t argc) {
+    for (size_t i = 0; i < argc; i++) {
+        if (i > 0) printf(" ");
+        
+        RuntimeValue v = args[i];
+        switch (v.type) {
+            case VAL_NUM:   printf("%d",  v.num_val);   break;
+            case VAL_FLOAT: printf("%g",  v.float_val); break;
+            case VAL_STR:   printf("%s",  v.str_val);   break;
+            case VAL_VOID:  printf("void"); break;
+        }
+    }
+    printf("\n");
+    return val_void();
+}
+
+#endif

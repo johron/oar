@@ -276,8 +276,19 @@ RuntimeValue eval(EvalCtx *ctx, ASTNode *node) {
             if (func != NULL) {
                 result = func(args, argc);
             } else {
+                #ifdef OAR_USE_EXTERNAL_FUNCTION_SOURCE
+                printf("we are here\n");
+                RuntimeFunc extern_func = ctx->env_get_func_external(ctx->env, name);
+                if (extern_func != NULL) {
+                    result = extern_func(args, argc);
+                } else {
+                    fprintf(stderr, "Runtime error: unknown function '%s'\n", name);
+                    exit(1);
+                }
+                #else
                 fprintf(stderr, "Runtime error: unknown function '%s'\n", name);
                 exit(1);
+                #endif
             }
 
             for (size_t i = 0; i < argc; i++) val_free(&args[i]);

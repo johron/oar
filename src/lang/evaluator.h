@@ -96,6 +96,9 @@ void entry_free(EnvEntry *entry);
 
 typedef struct {
     Env          *env;
+#ifdef OAR_USE_EXTERNAL_FUNCTION_SOURCE
+    RuntimeFunc (*env_get_func_external)(Env *env, const char *name);
+#endif
 } EvalCtx;
 
 EvalCtx *ctx_new(void);
