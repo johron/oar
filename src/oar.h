@@ -3,11 +3,21 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 // HEADER
 
 #ifndef OAR_LANG_H
 #define OAR_LANG_H
+
+/* Misc */
+
+typedef struct {
+    char* type; // syntax, runtime..
+    char* message;
+} Error;
+
+Error* mkerr(char* type, char* message, ...);
 
 /* Lexer */
 
@@ -98,7 +108,7 @@ typedef enum {
     NODE_VALUE_VAR_REF,
 } NodeType;
 
-static inline const char* get_node_type_string(NodeType type) {
+static inline char* get_node_type_string(NodeType type) {
     switch (type) {
         case NODE_BLOCK: return "NODE_BLOCK";
         case NODE_BINARY_OP: return "NODE_BINARY_OP";
@@ -111,8 +121,7 @@ static inline const char* get_node_type_string(NodeType type) {
         case NODE_VALUE_STRING: return "NODE_VALUE_STRING";
         case NODE_VALUE_VAR_REF: return "NODE_VALUE_VAR_REF";
         default: {
-            fprintf(stderr, "Unrecognized node type '%d'\n", type);
-            exit(1);
+            return NULL;
         }
     }
 };
@@ -293,11 +302,18 @@ typedef struct {
 #endif
 } EvalCtx;
 
-EvalCtx *ctx_new(void);
+EvalCtx *ctx_new(
+    #ifdef OAR_USE_EXTERNAL_FUNCTION_SOURCE
+        RuntimeFunc (*env_get_func_external)(Env *env, const char *name)
+    #else
+        void
+    #endif
+);
+
 void ctx_free(EvalCtx *ctx);
 
-RuntimeValue eval(EvalCtx *ctx, ASTNode *node);
-RuntimeValue eval_arith(char op, RuntimeValue left, RuntimeValue right);
+bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err);
+bool eval_arith(char op, RuntimeValue left, RuntimeValue right, RuntimeValue *out, Error* err);
 
 RuntimeValue builtin_echo(RuntimeValue *args, size_t argc);
 
@@ -306,6 +322,41 @@ RuntimeValue builtin_echo(RuntimeValue *args, size_t argc);
 // Implementation
 
 #ifdef OAR_LANG_IMPLEMENTATION
+
+/* Misc */
+
+Error* mkerr(char* type, char* message, ...) {
+    va_list args1, args2;
+    va_start(args1, message);
+    va_copy(args2, args1);
+
+    int length = vsnprintf(NULL, 0, message, args1);
+    va_end(args1);
+
+    if (length < 0) {
+        va_end(args2);
+        return NULL;
+    }
+
+    char *buffer = malloc(length + 1);
+    if (buffer == NULL) {
+        va_end(args2);
+        return NULL;
+    }
+
+    vsnprintf(buffer, length + 1, message, args2);
+
+    Error* err = malloc(sizeof(Error));
+
+    err = &(Error) {
+        .type = type,
+        .message = buffer,
+    };
+
+    va_end(args2);
+
+    return err;
+}
 
 /* Lexer */
 
@@ -1083,9 +1134,19 @@ RuntimeFunc env_get_func(Env *env, const char *name) {
     return NULL;
 }
 
-EvalCtx *ctx_new(void) {
+EvalCtx *ctx_new(
+    #ifdef OAR_USE_EXTERNAL_FUNCTION_SOURCE
+        RuntimeFunc (*env_get_func_external)(Env *env, const char *name)
+    #else
+        void
+    #endif
+) {
     EvalCtx *ctx  = malloc(sizeof(EvalCtx));
     ctx->env      = env_new(NULL);
+
+    #ifdef OAR_USE_EXTERNAL_FUNCTION_SOURCE
+    ctx->env_get_func_external = env_get_func_external;
+    #endif
 
     env_set_func(ctx->env, "echo", builtin_echo);
 
@@ -1097,21 +1158,35 @@ void ctx_free(EvalCtx *ctx) {
     free(ctx);
 }
 
-RuntimeValue eval_arith(char op, RuntimeValue left, RuntimeValue right) {
+bool eval_arith(char op, RuntimeValue left, RuntimeValue right, RuntimeValue *out, Error* err) {
     if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
         double l = (left.type == VAL_FLOAT) ? left.float_val : (double) left.num_val;
         double r = (right.type == VAL_FLOAT) ? right.float_val : (double) right.num_val;
 
         switch (op) {
-            case '+': return val_float(l + r);
-            case '-': return val_float(l - r);
-            case '*': return val_float(l * r);
+            case '+': {
+                RuntimeValue v = val_float(l + r);
+                *out = v;
+                return true;
+            };
+            case '-': {
+                RuntimeValue v = val_float(l - r);
+                *out = v;
+                return true;
+            };
+            case '*': {
+                RuntimeValue v = val_float(l * r);
+                *out = v;
+                return true;
+            };
             case '/': {
                 if (r == 0.0) {
-                    fprintf(stderr, "Runtime error: division by zero\n");
-                    exit(1);
+                    err = mkerr("Runtime", "Division by zero");
+                    return false;
                 }
-                return val_float(l / r);
+                RuntimeValue v = val_float(l / r);
+                *out = v;
+                return true;
             };
         }
     }
@@ -1120,47 +1195,92 @@ RuntimeValue eval_arith(char op, RuntimeValue left, RuntimeValue right) {
     long int r = right.num_val;
     
     switch (op) {
-        case '+': return val_num(l + r);
-        case '-': return val_num(l - r);
-        case '*': return val_num(l * r);
+        case '+': {
+            RuntimeValue v = val_num(l + r);
+            *out = v;
+            return true;
+        };
+        case '-': {
+            RuntimeValue v = val_num(l - r);
+            *out = v;
+            return true;
+        };
+        case '*': {
+            RuntimeValue v = val_num(l * r);
+            *out = v;
+            return true;
+        };
         case '/': {
-            if (r == 0) {
-                fprintf(stderr, "Runtime error: division by zero\n");
-                exit(1);
+            if (r == 0.0) {
+                err = mkerr("Runtime", "Division by zero");
+                return false;
             }
             
+            RuntimeValue v;
             if (l % r == 0) {
-                return val_num(l / r);
+                v = val_num(l / r);
             } else {
-                return val_float((double) l / (double) r);
+                v = val_float((double) l / (double) r);
             }
+
+            *out = v;
+            return true;
         };
     }
 
     fprintf(stderr, "Runtime error: unknown arithmetic operator '%c'\n", op);
-    exit(1);
+    err = mkerr("Runtime", "Unknown arithmetic operator '%c'", op);
+    return false;
 }
 
-RuntimeValue eval(EvalCtx *ctx, ASTNode *node) {
-    if (!node) return val_num(0);
+bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
+    if (!node) {
+        RuntimeValue v = val_num(0);
+        *out = v;
+        return true;
+    }
 
     switch (node->type) {
-        case NODE_VALUE_NUMBER: return val_num(node->data.value.num_value);
-        case NODE_VALUE_FLOAT: return val_float(node->data.value.float_value);
-        case NODE_VALUE_STRING: return val_str(node->data.value.str_value);
+        case NODE_VALUE_NUMBER: {
+            RuntimeValue v = val_num(node->data.value.num_value);
+            *out = v;
+            return true;
+        };
+        case NODE_VALUE_FLOAT: {
+            RuntimeValue v = val_float(node->data.value.float_value);
+            *out = v;
+            return true;
+        };
+        case NODE_VALUE_STRING: {
+            RuntimeValue v = val_str(node->data.value.str_value);
+            *out = v;
+            return true;
+        };
 
         case NODE_VALUE_VAR_REF: {
             RuntimeValue v;
             if (!env_get_var(ctx->env, node->data.value.str_value, &v)) {
-                fprintf(stderr, "Runtime error: undefined variable '$%s'\n", node->data.value.str_value);
-                exit(1);
+                err = mkerr("runtime", "undefined variable '$%s'", node->data.value.str_value);
+                return false;
             }
-            return v;
+            *out = v;
+            return true;
         };
 
         case NODE_BINARY_OP: {
-            RuntimeValue left = eval(ctx, node->data.binary_op.left);
-            RuntimeValue right = eval(ctx, node->data.binary_op.right);
+            RuntimeValue left, right;
+            Error* left_err = malloc(sizeof(Error));
+            Error* right_err = malloc(sizeof(Error));
+
+            if (eval(ctx, node->data.binary_op.left, &left, left_err) == false) {
+                err = left_err;
+                return false;
+            }
+            if (eval(ctx, node->data.binary_op.right, &right, right_err) == false) {
+                err = right_err;
+                return false;
+            }
+
             char op = node->data.binary_op.op;
 
             RuntimeValue result;
@@ -1181,32 +1301,73 @@ RuntimeValue eval(EvalCtx *ctx, ASTNode *node) {
                     .str_val = buf,
                 };
             } else {
-                result = eval_arith(op, left, right);
+                RuntimeValue v;
+                Error *v_err;
+
+                if (eval_arith(op, left, right, &v, v_err) == false) {
+                    err = v_err;
+                    return false;
+                }
+
+                result = v;
             }
 
             val_free(&left);
             val_free(&right);
-            return result;
+
+            *out = result;
+            return true;
         };
 
         case NODE_UNARY_OP: {
-            RuntimeValue v = eval(ctx, node->data.unary_op.operand);
+            RuntimeValue v;
+            Error* v_err;
+
+            if (eval(ctx, node->data.unary_op.operand, &v, v_err) == false) {
+                *err = *v_err;
+                return false;
+            }
+
             char op = node->data.unary_op.op;
             if (op == '-') {
-                if (v.type == VAL_FLOAT) return val_float(-v.float_val);
-                return val_num(-v.num_val);
+                if (v.type == VAL_FLOAT) {
+                    v = val_float(-v.float_val);
+                    *out = v;
+                    return true;
+                }
+
+                v = val_num(-v.num_val);
+                *out = v;
+                return true;
             }
-            if (op == '+') return v;
-            if (op == '!') return val_num(!v.num_val);
-            fprintf(stderr, "Runtime error: unknown unary op '%c'\n", op);
-            exit(1);
+            if (op == '+') {
+                *out = v;
+                return true;
+            }
+            if (op == '!') {
+                v = val_num(!v.num_val);
+                *out = v;
+                return true;
+            }
+
+            *err = *mkerr("Runtime", "Unknown unary op '%c'", op);
+            return false;
         };
 
         case NODE_VAR_DECL_STMT: {
-            RuntimeValue v = eval(ctx, node->data.var_decl.expr);
+            RuntimeValue v;
+            Error *v_err;
+
+            if (eval(ctx, node->data.var_decl.expr, &v, v_err) == false) {
+                *err = *v_err;
+                return false;
+            }
+
             env_set_var(ctx->env, node->data.var_decl.name, v);
             val_free(&v);
-            return val_void();
+            v = val_void();
+            *out = v;
+            return true;
         };
 
         case NODE_FUNC_CALL_STMT: {
@@ -1215,8 +1376,17 @@ RuntimeValue eval(EvalCtx *ctx, ASTNode *node) {
 
             size_t argc = args_block ? args_block->size : 0;
             RuntimeValue *args = argc ? malloc(argc * sizeof(RuntimeValue)) : NULL;
-            for (size_t i = 0; i < argc; i++)
-                args[i] = eval(ctx, &args_block->nodes[i]);
+            for (size_t i = 0; i < argc; i++) {
+                RuntimeValue v;
+                Error* v_err;
+
+                if (eval(ctx, &args_block->nodes[i], &v, v_err) == false) {
+                    *err = *v_err;
+                    return false;
+                }
+
+                args[i] = v;
+            }
 
             RuntimeValue result = val_void();
 
@@ -1225,28 +1395,29 @@ RuntimeValue eval(EvalCtx *ctx, ASTNode *node) {
                 result = func(args, argc);
             } else {
                 #ifdef OAR_USE_EXTERNAL_FUNCTION_SOURCE
-                printf("we are here\n");
                 RuntimeFunc extern_func = ctx->env_get_func_external(ctx->env, name);
                 if (extern_func != NULL) {
                     result = extern_func(args, argc);
                 } else {
-                    fprintf(stderr, "Runtime error: unknown function '%s'\n", name);
-                    exit(1);
+                    *err = *mkerr("Runtime", "Unknown function in '%s'", name);
+                    return false;
                 }
                 #else
-                fprintf(stderr, "Runtime error: unknown function '%s'\n", name);
-                exit(1);
+                *err = *mkerr("Runtime", "Unknown function in '%s'", name);
+                return false;
                 #endif
             }
 
             for (size_t i = 0; i < argc; i++) val_free(&args[i]);
             free(args);
-            return result;
+
+            *out = result;
+            return true;
         };
 
         case NODE_FUNC_DECL_STMT: {
-            fprintf(stderr, "func decl unimplemented");
-            exit(1);
+            *err = *mkerr("Runtime", "Function declaration evaluation not implemented");
+            return false;
         };
 
         case NODE_BLOCK: {
@@ -1257,17 +1428,28 @@ RuntimeValue eval(EvalCtx *ctx, ASTNode *node) {
 
             for (size_t i = 0; i < node->data.block.size; i++) {
                 val_free(&last);
-                last = eval(ctx, &node->data.block.nodes[i]);
+
+                RuntimeValue v;
+                Error* v_err;
+
+                if (eval(ctx, &node->data.block.nodes[i], &v, v_err) == false) {
+                    *err = *v_err;
+                    return false;
+                }
+
+                last = v;
             }
 
             ctx->env = saved;
             env_free(child);
-            return last;
+
+            *out = last;
+            return true;
         }
 
         default: {
-            fprintf(stderr, "Runtime error: unhandled node type %s\n", get_node_type_string(node->type));
-            exit(1);
+            *err = *mkerr("runtime", "unhandled node type %s", get_node_type_string(node->type));
+            return false;
         };
     }
 }

@@ -19,13 +19,9 @@ int main(int argc, char **argv)
         "-Wextra",
         "-std=gnu11",
         "src/main.c",
-        //"src/lang/lexer.c",
-        //"src/lang/parser.c",
-        //"src/lang/evaluator.c",
         "-o",
         "build/oar",
         "-O2",
-        //"-DOAR_USE_EXTERNAL_FUNCTION_SOURCE",
     );
 
     if (!nob_cmd_run_sync(cmd)) {
