@@ -262,6 +262,7 @@ ASTNode* parse_primary_expr(Parser *p) {
 
     switch (token.type) {
         case TOK_NUM: parser_advance(p); return parser_create_member_node(NODE_VALUE_NUMBER, token.value);
+        case TOK_FLOAT: parser_advance(p); return parser_create_member_node(NODE_VALUE_FLOAT, token.value);
         case TOK_STR: parser_advance(p); return parser_create_member_node(NODE_VALUE_STRING, token.value);
 
         case TOK_DOLLAR: {

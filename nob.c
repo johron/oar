@@ -16,7 +16,7 @@ int main(int argc, char **argv)
         "cc",
         "-Wall",
         "-Wextra",
-        "-std=c11",
+        "-std=gnu11",
         "src/main.c",
         "src/lang/lexer.c",
         "src/lang/parser.c",

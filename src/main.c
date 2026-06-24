@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 int main() {
-    char input[] = "let $x = 2; let $y = ($x + 2);";
+    char input[] = "1";
 
     Lexer lexer = {
         .src = input,

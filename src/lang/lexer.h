@@ -6,6 +6,7 @@
 typedef enum {
     TOK_STR,
     TOK_NUM,
+    TOK_FLOAT,
 
     TOK_PLUS,
     TOK_MINUS,
@@ -42,6 +43,7 @@ typedef enum {
 
 typedef union {
     int num_value;
+    float float_value;
     char* str_value;
 } TokenValue;
 

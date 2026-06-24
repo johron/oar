@@ -20,6 +20,7 @@ typedef enum {
     NODE_FUNC_CALL_STMT,
 
     NODE_VALUE_NUMBER,
+    NODE_VALUE_FLOAT,
     NODE_VALUE_STRING,
     NODE_VALUE_VAR_REF,
 } NodeType;

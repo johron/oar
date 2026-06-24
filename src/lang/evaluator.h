@@ -32,6 +32,9 @@ static inline RuntimeValue val_void()          {
     return (RuntimeValue){ .type = VAL_VOID };
 }
 
+RuntimeValue val_str(const char *s);
+void val_free(RuntimeValue *v);
+
 RuntimeValue evaluate(ASTNode *node);
 
 #endif

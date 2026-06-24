@@ -9,6 +9,7 @@ const char* get_token_type_string(TokenType type) {
     switch (type) {
         case TOK_STR: return "TOK_STR";
         case TOK_NUM: return "TOK_NUM";
+        case TOK_FLOAT: return "TOK_FLOAT";
         case TOK_PLUS: return "TOK_PLUS";
         case TOK_MINUS: return "TOK_MINUS";
         case TOK_STAR: return "TOK_STAR";
@@ -60,6 +61,23 @@ Token lexer_next_token(Lexer *l) {
 
         while (isdigit(lexer_peek(l))) {
             num = num * 10 + (lexer_advance(l) - '0');
+        }
+
+        float decimal = 0.0f;
+        if (lexer_peek(l) == '.') {
+            lexer_advance(l);
+            float place = 0.1f;
+            while (isdigit(lexer_peek(l))) {
+                decimal += (lexer_advance(l) - '0') * place;
+                place *= 0.1f;
+            }
+
+            return (Token){
+                .type = TOK_FLOAT,
+                .value = {
+                    .float_value = num + decimal,
+                }
+            };
         }
 
         return (Token){

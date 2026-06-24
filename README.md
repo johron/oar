@@ -1,8 +1,8 @@
-# Ø (oslash)
+# Oar
 - Modern shell and scripting language
 
 ## Syntax idea
-```ø
+```oar
 $ program
 $ if (condition) == true { program }; printnl "hi\n" // print i, print("hi", also hi, another hi)
 $ fn do_something() {
@@ -14,5 +14,5 @@ $ (program arg1 arg 2 arg) // will run what is inside the parenthesis, does the 
 
 ## Ideas
 * Noe support med nix, direnv?, auto nix-develop hvis flake.nix? ...
-* support for en root.ø fil, eller ".ø" som auto importeres når man kommer inni en mappe med den, og so då du går ut av den mappen so skrus det av?
+* support for en root.oar fil, eller ".oar" som auto importeres når man kommer inni en mappe med den, og so då du går ut av den mappen so skrus det av?
 * also implement some kind of stdlib, with some string manipulation stuff, to make scripting easier, +++ etc
