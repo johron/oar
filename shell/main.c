@@ -71,6 +71,12 @@ void repl(EvalCtx *ctx) {
 RuntimeFunc env_get_func_external(Env *env, const char *name) {
     // Try to spawn `name` as program from path...
 
+    // Plan
+    // * First check if the name starts with / or ./ (also need to fix the lexer to support these as strings), also need to make lexer make basically anything into a string
+    //     * If a path is supplied, then check if it exists then run that
+    // * else path resolver, checks the path for `name` and runs that
+    // * else error 
+
     return NULL;
 }
 
