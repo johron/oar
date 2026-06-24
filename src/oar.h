@@ -17,7 +17,7 @@ typedef struct {
     char* message;
 } Error;
 
-Error* mkerr(char* type, char* message, ...);
+Error mkerr(char* type, char* message, ...);
 
 /* Lexer */
 
@@ -325,7 +325,7 @@ RuntimeValue builtin_echo(RuntimeValue *args, size_t argc);
 
 /* Misc */
 
-Error* mkerr(char* type, char* message, ...) {
+Error mkerr(char* type, char* message, ...) {
     va_list args1, args2;
     va_start(args1, message);
     va_copy(args2, args1);
@@ -335,20 +335,24 @@ Error* mkerr(char* type, char* message, ...) {
 
     if (length < 0) {
         va_end(args2);
-        return NULL;
+        return (Error) {
+            .type = "runtime",
+            .message = "Could not make error struct, length less that zero?!"
+        };
     }
 
     char *buffer = malloc(length + 1);
     if (buffer == NULL) {
         va_end(args2);
-        return NULL;
+        return (Error) {
+            .type = "runtime",
+            .message = "Could not allocate memory for error message",
+        };
     }
 
     vsnprintf(buffer, length + 1, message, args2);
 
-    Error* err = malloc(sizeof(Error));
-
-    err = &(Error) {
+    Error err = {
         .type = type,
         .message = buffer,
     };
@@ -1181,7 +1185,7 @@ bool eval_arith(char op, RuntimeValue left, RuntimeValue right, RuntimeValue *ou
             };
             case '/': {
                 if (r == 0.0) {
-                    err = mkerr("Runtime", "Division by zero");
+                    *err = mkerr("runtime", "division by zero");
                     return false;
                 }
                 RuntimeValue v = val_float(l / r);
@@ -1212,7 +1216,7 @@ bool eval_arith(char op, RuntimeValue left, RuntimeValue right, RuntimeValue *ou
         };
         case '/': {
             if (r == 0.0) {
-                err = mkerr("Runtime", "Division by zero");
+                *err = mkerr("runtime", "division by zero");
                 return false;
             }
             
@@ -1228,8 +1232,7 @@ bool eval_arith(char op, RuntimeValue left, RuntimeValue right, RuntimeValue *ou
         };
     }
 
-    fprintf(stderr, "Runtime error: unknown arithmetic operator '%c'\n", op);
-    err = mkerr("Runtime", "Unknown arithmetic operator '%c'", op);
+    *err = mkerr("runtime", "unknown arithmetic operator '%c'", op);
     return false;
 }
 
@@ -1260,7 +1263,7 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
         case NODE_VALUE_VAR_REF: {
             RuntimeValue v;
             if (!env_get_var(ctx->env, node->data.value.str_value, &v)) {
-                err = mkerr("runtime", "undefined variable '$%s'", node->data.value.str_value);
+                *err = mkerr("runtime", "undefined variable '$%s'", node->data.value.str_value);
                 return false;
             }
             *out = v;
@@ -1269,15 +1272,15 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
 
         case NODE_BINARY_OP: {
             RuntimeValue left, right;
-            Error* left_err = malloc(sizeof(Error));
-            Error* right_err = malloc(sizeof(Error));
+            Error left_err = {0};
+            Error right_err = {0};
 
-            if (eval(ctx, node->data.binary_op.left, &left, left_err) == false) {
-                err = left_err;
+            if (eval(ctx, node->data.binary_op.left, &left, &left_err) == false) {
+                *err = left_err;
                 return false;
             }
-            if (eval(ctx, node->data.binary_op.right, &right, right_err) == false) {
-                err = right_err;
+            if (eval(ctx, node->data.binary_op.right, &right, &right_err) == false) {
+                *err = right_err;
                 return false;
             }
 
@@ -1302,10 +1305,10 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
                 };
             } else {
                 RuntimeValue v;
-                Error *v_err;
+                Error v_err;
 
-                if (eval_arith(op, left, right, &v, v_err) == false) {
-                    err = v_err;
+                if (eval_arith(op, left, right, &v, &v_err) == false) {
+                    *err = v_err;
                     return false;
                 }
 
@@ -1321,10 +1324,10 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
 
         case NODE_UNARY_OP: {
             RuntimeValue v;
-            Error* v_err;
+            Error v_err = {0};
 
-            if (eval(ctx, node->data.unary_op.operand, &v, v_err) == false) {
-                *err = *v_err;
+            if (eval(ctx, node->data.unary_op.operand, &v, &v_err) == false) {
+                *err = v_err;
                 return false;
             }
 
@@ -1350,16 +1353,16 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
                 return true;
             }
 
-            *err = *mkerr("Runtime", "Unknown unary op '%c'", op);
+            *err = mkerr("runtime", "unknown unary op '%c'", op);
             return false;
         };
 
         case NODE_VAR_DECL_STMT: {
             RuntimeValue v;
-            Error *v_err;
+            Error v_err = {0};
 
-            if (eval(ctx, node->data.var_decl.expr, &v, v_err) == false) {
-                *err = *v_err;
+            if (eval(ctx, node->data.var_decl.expr, &v, &v_err) == false) {
+                *err = v_err;
                 return false;
             }
 
@@ -1378,10 +1381,10 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
             RuntimeValue *args = argc ? malloc(argc * sizeof(RuntimeValue)) : NULL;
             for (size_t i = 0; i < argc; i++) {
                 RuntimeValue v;
-                Error* v_err;
+                Error v_err;
 
-                if (eval(ctx, &args_block->nodes[i], &v, v_err) == false) {
-                    *err = *v_err;
+                if (eval(ctx, &args_block->nodes[i], &v, &v_err) == false) {
+                    *err = v_err;
                     return false;
                 }
 
@@ -1399,11 +1402,11 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
                 if (extern_func != NULL) {
                     result = extern_func(args, argc);
                 } else {
-                    *err = *mkerr("Runtime", "Unknown function in '%s'", name);
+                    *err = mkerr("runtime", "unknown function '%s'", name);
                     return false;
                 }
                 #else
-                *err = *mkerr("Runtime", "Unknown function in '%s'", name);
+                *err = mkerr("runtime", "unknown function '%s'", name);
                 return false;
                 #endif
             }
@@ -1416,7 +1419,7 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
         };
 
         case NODE_FUNC_DECL_STMT: {
-            *err = *mkerr("Runtime", "Function declaration evaluation not implemented");
+            *err = mkerr("runtime", "function declaration evaluation not implemented");
             return false;
         };
 
@@ -1430,10 +1433,10 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
                 val_free(&last);
 
                 RuntimeValue v;
-                Error* v_err;
+                Error v_err;
 
-                if (eval(ctx, &node->data.block.nodes[i], &v, v_err) == false) {
-                    *err = *v_err;
+                if (eval(ctx, &node->data.block.nodes[i], &v, &v_err) == false) {
+                    *err = v_err;
                     return false;
                 }
 
@@ -1448,7 +1451,7 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err) {
         }
 
         default: {
-            *err = *mkerr("runtime", "unhandled node type %s", get_node_type_string(node->type));
+            *err = mkerr("runtime", "unhandled node type %s", get_node_type_string(node->type));
             return false;
         };
     }

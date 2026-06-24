@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-Error* exec_input(EvalCtx *ctx, char* input) {
+bool exec_input(EvalCtx *ctx, char* input, Error *err) {
     Lexer lexer = {
         .src = input,
         .pos = 0,
@@ -36,10 +36,11 @@ Error* exec_input(EvalCtx *ctx, char* input) {
 
     for (size_t i = 0; i < size; i++) {
         RuntimeValue v;
-        Error* err;
+        Error v_err = {0};
 
-        if (eval(ctx, &nodes[i], &v, err) == false) {
-            return err;
+        if (eval(ctx, &nodes[i], &v, &v_err) == false) {
+            *err = v_err;
+            return false;
         }
 
         parser_free_ast(&nodes[i]);
@@ -47,7 +48,7 @@ Error* exec_input(EvalCtx *ctx, char* input) {
 
     free_tok_array(&tok_array);
 
-    return NULL;
+    return true;
 }
 
 void repl(EvalCtx *ctx) {
@@ -58,9 +59,10 @@ void repl(EvalCtx *ctx) {
         if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
             buffer[strcspn(buffer, "\n")] = '\0';
 
-            Error* err = exec_input(ctx, buffer);
-            if (err != NULL) {
-                fprintf(stderr, "oar: %s: %s\n", err->type, err->message);
+            Error err = {0};
+            if (exec_input(ctx, buffer, &err) == false) {
+                fprintf(stderr, "oar: %s: %s\n", err.type, err.message);
+                free(err.message);
             }
         }
     }
