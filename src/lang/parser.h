@@ -3,6 +3,7 @@
 
 #include "lexer.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 typedef struct {
@@ -24,6 +25,25 @@ typedef enum {
     NODE_VALUE_STRING,
     NODE_VALUE_VAR_REF,
 } NodeType;
+
+inline const char* get_node_type_string(NodeType type) {
+    switch (type) {
+        NODE_BLOCK: return "NODE_BLOCK";
+        NODE_BINARY_OP: return "NODE_BINARY_OP";
+        NODE_UNARY_OP: return "NODE_UNARY_OP";
+        NODE_VAR_DECL_STMT: return "NODE_VAR_DECL_STMT";
+        NODE_FUNC_DECL_STMT: return "NODE_FUNC_DECL_STMT";
+        NODE_FUNC_CALL_STMT: return "NODE_FUNC_CALL_STMT";
+        NODE_VALUE_NUMBER: return "NODE_VALUE_NUMBER";
+        NODE_VALUE_FLOAT: return "NODE_VALUE_FLOAT";
+        NODE_VALUE_STRING: return "NODE_VALUE_STRING";
+        NODE_VALUE_VAR_REF: return "NODE_VALUE_VAR_REF";
+        default: {
+            fprintf(stderr, "Unrecognized node type '%d'\n", type);
+            exit(1);
+        }
+    }
+};
 
 typedef union {
     int number_value;
@@ -48,7 +68,7 @@ typedef struct {
 
 typedef struct {
     char* name;
-    Block *args;
+    Block args;
 } FuncCall;
 
 typedef struct {

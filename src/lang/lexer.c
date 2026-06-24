@@ -57,16 +57,16 @@ Token lexer_next_token(Lexer *l) {
     char c = lexer_peek(l);
 
     if (isdigit(c)) {
-        int num = 0;
+        long int num = 0;
 
         while (isdigit(lexer_peek(l))) {
             num = num * 10 + (lexer_advance(l) - '0');
         }
 
-        float decimal = 0.0f;
+        double decimal = 0.0;
         if (lexer_peek(l) == '.') {
             lexer_advance(l);
-            float place = 0.1f;
+            double place = 0.1;
             while (isdigit(lexer_peek(l))) {
                 decimal += (lexer_advance(l) - '0') * place;
                 place *= 0.1f;

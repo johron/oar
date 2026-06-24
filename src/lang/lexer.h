@@ -42,8 +42,8 @@ typedef enum {
 } TokenType;    
 
 typedef union {
-    int num_value;
-    float float_value;
+    long int num_value;
+    double float_value;
     char* str_value;
 } TokenValue;
 

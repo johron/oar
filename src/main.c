@@ -3,29 +3,39 @@
 #include "lang/evaluator.h"
 
 #include <stdio.h>
+#include <string.h>
 
 int main() {
-    char input[] = "1";
+    EvalCtx *ctx = ctx_new();
 
-    Lexer lexer = {
-        .src = input,
-        .pos = 0,
-    };
-    TokenArray tok_array = lex_all(&lexer);
+    while (true) {
+        char buffer[8192];
 
-    Parser parser = {
-        .tok_array = tok_array,
-        .pos = 0,
-    };
+        printf("$ ");
+        if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+            buffer[strcspn(buffer, "\n")] = '\0';
 
-    ASTNode *ast = parse_block(&parser);
-    printf("%d\n", ast->type);
+            Lexer lexer = {
+                .src = buffer,
+                .pos = 0,
+            };
+            TokenArray tok_array = lex_all(&lexer);
 
-    RuntimeValue value = evaluate(ast);
+            Parser parser = {
+                .tok_array = tok_array,
+                .pos = 0,
+            };
 
-    free_tok_array(&tok_array);
+            ASTNode *ast = parse_block(&parser);
 
-    if (ast != NULL) {
-        parser_free_ast(ast);
+            RuntimeValue value = eval(ctx, ast);
+
+            free_tok_array(&tok_array);
+            if (ast != NULL) {
+                parser_free_ast(ast);
+            }
+        }
     }
+
+    ctx_free(ctx);
 }

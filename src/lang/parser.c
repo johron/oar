@@ -219,7 +219,7 @@ ASTNode* parse_func_call_stmt(Parser *p) {
     }
 
     FuncCall func_call = {
-        .args = &args,
+        .args = args,
         .name = func_tok.value.str_value,
     };
 

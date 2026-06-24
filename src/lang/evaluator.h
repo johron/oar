@@ -4,6 +4,27 @@
 #include "parser.h"
 #include "lexer.h"
 
+#include <stdbool.h>
+
+typedef enum {
+    ENTRY_VAR,
+    ENTRY_FUNC,
+} EntryType;
+
+inline const char* get_entry_type_string(EntryType type) {
+    switch (type) {
+        ENTRY_VAR: return "ENTRY_VAR";
+        ENTRY_FUNC: return "ENTRY_FUNC";
+    }
+}
+
+inline const char* get_entry_type_string_pretty(EntryType type) {
+    switch (type) {
+        ENTRY_VAR: return "variable";
+        ENTRY_FUNC: return "function";
+    }
+}
+
 typedef enum {
     VAL_NUM,
     VAL_FLOAT,
@@ -20,21 +41,61 @@ typedef struct {
     };
 } RuntimeValue;
 
-static inline RuntimeValue val_num(int v)      {
-    return (RuntimeValue){ .type = VAL_NUM,   .num_val   = v };
+typedef RuntimeValue (*RuntimeFunc)(RuntimeValue *args, size_t argc);
+
+static inline RuntimeValue val_num(int v) {
+    return (RuntimeValue){ .type = VAL_NUM, .num_val = v };
 }
 
 static inline RuntimeValue val_float(double v) {
     return (RuntimeValue){ .type = VAL_FLOAT, .float_val = v };
 }
 
-static inline RuntimeValue val_void()          {
+static inline RuntimeValue val_void() {
     return (RuntimeValue){ .type = VAL_VOID };
 }
 
 RuntimeValue val_str(const char *s);
 void val_free(RuntimeValue *v);
+static RuntimeValue val_clone(RuntimeValue v);
 
-RuntimeValue evaluate(ASTNode *node);
+typedef struct EnvEntry EnvEntry;
+typedef struct Env Env;
+
+struct EnvEntry {
+    char *name;
+    EntryType type;
+    union {
+        RuntimeValue value;
+        RuntimeFunc func;
+    };
+    EnvEntry *next;
+};
+
+struct Env {
+    EnvEntry *head;
+    Env *parent;
+};
+
+Env *env_new(Env *parent);
+void env_free(Env *env);
+void env_set_var(Env *env, const char *name, RuntimeValue value);
+void env_set_func(Env *env, const char *name, RuntimeFunc func);
+bool env_get_var(Env *env, const char *name, RuntimeValue *out);
+RuntimeFunc env_get_func(Env *env, const char *name);
+
+void entry_free(EnvEntry *entry);
+
+typedef struct {
+    Env          *env;
+} EvalCtx;
+
+EvalCtx *ctx_new(void);
+void ctx_free(EvalCtx *ctx);
+
+RuntimeValue eval(EvalCtx *ctx, ASTNode *node);
+RuntimeValue eval_arith(char op, RuntimeValue left, RuntimeValue right);
+
+static RuntimeValue builtin_echo(RuntimeValue *args, size_t argc);
 
 #endif
