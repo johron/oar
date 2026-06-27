@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <limits.h>
 
 // HEADER
 
@@ -317,6 +318,7 @@ bool eval(EvalCtx *ctx, ASTNode *node, RuntimeValue *out, Error *err);
 bool eval_arith(char op, RuntimeValue left, RuntimeValue right, RuntimeValue *out, Error* err);
 
 RuntimeValue builtin_echo(RuntimeValue *args, size_t argc);
+RuntimeValue builtin_exit(RuntimeValue *args, size_t argc);
 
 #endif
 
@@ -448,13 +450,12 @@ bool lexer_next_token(Lexer *l, Token *out, Error *err) {
         return true;
     }
 
-
     if (isalpha((unsigned char)c)) {
         size_t cap = 128;
         char *str = malloc(cap);
         size_t i = 0;
 
-        while ((c = lexer_peek(l)), isalnum((unsigned char)c)) {
+        while ((c = lexer_peek(l)), isalnum((unsigned char)c) || c == '_' || c == '.' || c == '/') {
             if (i >= cap) {
                 cap *= 2;
                 char *next_str = realloc(str, cap);
@@ -514,6 +515,52 @@ bool lexer_next_token(Lexer *l, Token *out, Error *err) {
             return false;
         }
 
+        *out = (Token){
+            .type = TOK_STR,
+            .value = {
+                .str_value = str,
+            }
+        };
+        return true;
+    }
+
+    if (c == '.') {
+        char *str = malloc(PATH_MAX);
+        
+        size_t i = 0;
+        while ((c = lexer_peek(l)), isalnum((unsigned char) c) || c == '.' || c == '/' || c == '_') {
+            if (i >= PATH_MAX) {
+                *err = mkerr("lexer", "path string exceeds path maximum '%d'", PATH_MAX);
+                return false;
+            }
+            lexer_advance(l);
+            str[i++] = c;
+        }
+
+        str[i] = '\0';
+        *out = (Token){
+            .type = TOK_STR,
+            .value = {
+                .str_value = str,
+            }
+        };
+        return true;
+    }
+
+    if (c == '/') {
+        char *str = malloc(PATH_MAX);
+        
+        size_t i = 0;
+        while ((c = lexer_peek(l)), isalnum((unsigned char) c) || c == '.' || c == '/' || c == '_') {
+            if (i >= PATH_MAX) {
+                *err = mkerr("lexer", "path string exceeds path maximum '%d'", PATH_MAX);
+                return false;
+            }
+            lexer_advance(l);
+            str[i++] = c;
+        }
+
+        str[i] = '\0';
         *out = (Token){
             .type = TOK_STR,
             .value = {
@@ -1152,6 +1199,7 @@ EvalCtx *ctx_new(
     #endif
 
     env_set_func(ctx->env, "echo", builtin_echo);
+    env_set_func(ctx->env, "exit", builtin_exit);
 
     return ctx;
 }
@@ -1467,6 +1515,19 @@ RuntimeValue builtin_echo(RuntimeValue *args, size_t argc) {
     }
     printf("\n");
     return val_void();
+}
+
+RuntimeValue builtin_exit(RuntimeValue *args, size_t argc) {
+    if (argc > 0) {
+        if (args[0].type != VAL_NUM) {
+            fprintf(stderr, "oar: 'exit': numeric argument required\n");
+            return val_num(1);
+        }
+        
+        exit(args[0].num_val);
+    } else {
+        exit(0);
+    }
 }
 
 #endif
