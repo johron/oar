@@ -524,7 +524,7 @@ bool lexer_next_token(Lexer *l, Token *out, Error *err) {
         return true;
     }
 
-    if (c == '.') {
+    if (c == '/' || c == '.') {
         char *str = malloc(PATH_MAX);
         
         size_t i = 0;
@@ -547,11 +547,11 @@ bool lexer_next_token(Lexer *l, Token *out, Error *err) {
         return true;
     }
 
-    if (c == '/') {
+    if (c == '-') {
         char *str = malloc(PATH_MAX);
         
         size_t i = 0;
-        while ((c = lexer_peek(l)), isalnum((unsigned char) c) || c == '.' || c == '/' || c == '_') {
+        while ((c = lexer_peek(l)), isalnum((unsigned char) c) || c == '_' || c == '-') {
             if (i >= PATH_MAX) {
                 *err = mkerr("lexer", "path string exceeds path maximum '%d'", PATH_MAX);
                 return false;

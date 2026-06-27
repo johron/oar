@@ -3,12 +3,14 @@
 
 #include "../lang/oar.h"
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
 #include <unistd.h>
 #include <spawn.h>
 #include <errno.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -68,21 +70,35 @@ bool exec_input(EvalCtx *ctx, char* input, Error *err) {
     return true;
 }
 
+
 void repl(EvalCtx *ctx) {
     while (true) {
         char buffer[8192];
 
+        clearerr(stdin);
+
         printf("$ ");
+        fflush(stdout);
+        
         if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
             buffer[strcspn(buffer, "\n")] = '\0';
 
             Error err = {0};
             if (exec_input(ctx, buffer, &err) == false) {
-                if (&err != NULL && err.message != NULL && err.type != NULL) {
+                if (err.message != NULL && err.type != NULL) {
                     fprintf(stderr, "oar: %s: %s\n", err.type, err.message);
                 }
                 free(err.message);
             }
+        } else {
+            if (errno == EINTR) {
+                clearerr(stdin);
+                printf("\n");
+                continue;
+            }
+            
+            printf("\nexit\n");
+            break;
         }
     }
 }
@@ -189,9 +205,25 @@ bool spawn_program(char* cmd, char* path, int *exit_code, RuntimeValue *args, si
 
     if (status == 0) {
         int wait_status;
-        waitpid(pid, &wait_status, 0);
-        if (WIFEXITED(wait_status)) {
-            *exit_code = WEXITSTATUS(wait_status);
+        pid_t wpid;
+
+        do {
+            wpid = waitpid(pid, &wait_status, 0);
+        } while (wpid == -1 && errno == EINTR);
+
+        if (wpid != -1) {
+            if (WIFEXITED(wait_status)) {
+                *exit_code = WEXITSTATUS(wait_status);
+            } 
+            else if (WIFSIGNALED(wait_status)) {
+                int sig = WTERMSIG(wait_status);
+                if (sig == SIGINT) {
+                    printf("\n");
+                }
+                *exit_code = 128 + sig;
+            }
+        } else {
+            *exit_code = 1;
         }
     } else {
         *exit_code = 1;
@@ -240,6 +272,11 @@ int resolve_from_env_path(const char *cmd, char *resolved_path) {
 }
 
 bool try_run_func_external(Env *env, const char *cmd, RuntimeValue *args, size_t argc) {
+    if (strcmp(cmd, ".") == 0 || strcmp(cmd, "..") == 0) {
+        fprintf(stderr, "oar: '%s': is a directory\n", cmd);
+        return false;
+    }
+
     char path[PATH_MAX];
 
     if (startsWith("/", cmd) == true) { // absolute
@@ -352,7 +389,21 @@ bool try_run_func_external(Env *env, const char *cmd, RuntimeValue *args, size_t
     }
 }
 
+void handle_sigint(int sig) {
+    (void)sig;
+}
+
 int main() {
+    struct sigaction sa;
+    sa.sa_handler = handle_sigint;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("oar: failed to set up SIGINT handler");
+        return 1;
+    }
+
     EvalCtx *ctx = ctx_new(try_run_func_external);
 
     repl(ctx);
